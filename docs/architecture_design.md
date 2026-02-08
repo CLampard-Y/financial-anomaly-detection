@@ -18,23 +18,23 @@ This document defines the high-availability architecture for the **Distributed F
 The system utilizes a **Hub-and-Spoke** topology centered around the US Master node.
 ```mermaid
 graph TD
-    subgraph US_Region [🇺🇸 US-Master (The Commander)]
+    subgraph US_Region["🇺🇸 US-Master - The Commander"]
         Airflow[Airflow Scheduler]
         DB[(Postgres DB)]
     end
 
-    subgraph HK_Region [🇭🇰 HK-Primary (The Sprinter)]
+    subgraph HK_Region["🇭🇰 HK-Primary - The Sprinter"]
         WorkerHK[Docker Worker]
     end
 
-    subgraph JP_Region [🇯🇵 JP-Backup (The Guard)]
+    subgraph JP_Region["🇯🇵 JP-Backup - The Guard"]
         WorkerJP[Docker Worker]
     end
 
-    Airflow -- "SSH (Primary Command)" --> WorkerHK
-    Airflow -.-> |"SSH (Failover Command)"| WorkerJP
-    WorkerHK -- "TCP 5432 (Data)" --> DB
-    WorkerJP -- "TCP 5432 (Data)" --> DB
+    Airflow -->|SSH Primary Command| WorkerHK
+    Airflow -.->|SSH Failover Command| WorkerJP
+    WorkerHK -->|TCP 5432 Data| DB
+    WorkerJP -->|TCP 5432 Data| DB
 
     style US_Region fill:#e1f5fe,stroke:#01579b
     style HK_Region fill:#e8f5e9,stroke:#2e7d32
