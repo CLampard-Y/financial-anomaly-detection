@@ -1,3 +1,9 @@
+# =================================
+# Airflow Docker Compose File
+# =================================
+# Startup sequence: postgres -> webserver + scheduler (parallel)
+
+
 version: '3.8'
 
 services:
@@ -31,32 +37,47 @@ services:
     image: apache/airflow:2.7.1
     container_name: airflow-webserver
     command: webserver
+
+    # Airflow Web UI: http://<US_IP>:8080
     ports:
       - "8080:8080"
+
     environment:
+      # Use LocalExecutor, suitable for small to medium workloads
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+
+      # Database connection string (credentials from .env file)
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+
       # Key for encrypting connection credentials
       - AIRFLOW__CORE__FERNET_KEY=${FERNET_KEY}
     volumes:
+      # Mount project directories: DAGs, Logs, and Plugins
       - ../../dags:/opt/airflow/dags
       - ../../logs:/opt/airflow/logs
       - ../../plugins:/opt/airflow/plugins
+
       # Mounting Host SSH keys for remote execution capability
+      # :ro means read-only (for security)
+      # require SSH key pair configured on host machine
       - /root/.ssh:/home/airflow/.ssh:ro
+    
+    # Start only after postgres health check pass
     depends_on:
       postgres:
         condition: service_healthy
     restart: always
 
   # ----------------------------------------
-  # 3. Airflow Scheduler (The Brain)
+  # 3. Airflow Scheduler
   # ----------------------------------------
   airflow-scheduler:
     image: apache/airflow:2.7.1
     container_name: airflow-scheduler
     command: scheduler
+
+    # Shares database and exexcutor configuration with webserver
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
@@ -65,12 +86,14 @@ services:
       - ../../dags:/opt/airflow/dags
       - ../../logs:/opt/airflow/logs
       - ../../plugins:/opt/airflow/plugins
-      # Mounting Host SSH keys for remote execution capability
       - /root/.ssh:/home/airflow/.ssh:ro
     depends_on:
       postgres:
         condition: service_healthy
     restart: always
 
+# Define Volumes for Persistent Storage
+# Volume persist after container deletion
+# Normal folder : /var/lib/docker/volumes/
 volumes:
   postgres-db-volume:
