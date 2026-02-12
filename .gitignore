@@ -1,4 +1,3 @@
-# 防止上传python缓存文件和敏感信息
 
 # Python
 __pycache__/
@@ -11,6 +10,7 @@ __pycache__/
 env/
 venv/
 ENV/
+airflow.cfg
 
 # IDE settings
 .vscode/
@@ -20,9 +20,18 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Data and logs
+data_lake/
+logs/
+postgres-data/
+
 # Logs
 #logs/
 #*.log
+
+# SSH keys
+id_rsa
+id_rsa.pub
 
 # Docker
 docker-compose.override.yaml

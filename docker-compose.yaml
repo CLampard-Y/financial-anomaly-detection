@@ -9,6 +9,7 @@ version: '3.8'
 services:
   # ----------------------------------------
   # 1. Core Database (Postgres)
+  # Stores Airflow metadata and business data
   # ----------------------------------------
   postgres:
     image: postgres:13
@@ -16,14 +17,14 @@ services:
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-airflow}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-airflow}
-      - POSTGRES_DB=airflow
+      - POSTGRES_DB=${POSTGRES_DB:-airflow}
     ports:
       # Exposed for remote workers (HK/JP) to write back data
       # Security Note: Protected by UFW/IPTables on host machine
       - "5432:5432"
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
-      - ../database/init:/docker-entrypoint-initdb.d
+      - ./infra/init-db:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 5s
@@ -51,12 +52,12 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
 
       # Key for encrypting connection credentials
-      - AIRFLOW__CORE__FERNET_KEY=${FERNET_KEY}
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
     volumes:
       # Mount project directories: DAGs, Logs, and Plugins
-      - ../../dags:/opt/airflow/dags
-      - ../../logs:/opt/airflow/logs
-      - ../../plugins:/opt/airflow/plugins
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
 
       # Mounting Host SSH keys for remote execution capability
       # :ro means read-only (for security)
@@ -83,9 +84,9 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
     volumes:
-      - ../../dags:/opt/airflow/dags
-      - ../../logs:/opt/airflow/logs
-      - ../../plugins:/opt/airflow/plugins
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
       - /root/.ssh:/home/airflow/.ssh:ro
     depends_on:
       postgres:
