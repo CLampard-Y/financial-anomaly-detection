@@ -1,11 +1,19 @@
 #!/bin/bash
-# ====================================
+# =========================================
 # Automatically initialize database
-# ====================================
-# This separates airflow metadata from actual business data
-# Usage: Navigate to the script directory first, then run: bash 01_init.sh
-
+# =========================================
+# This script is designed to run inside PostgreSQL Docker container
+# It will be automatically executed by docker-entrypoint.sh
+# 
+# Manual execution (for testing):
+#   docker exec -it pipeline-db bash -c "bash /docker-entrypoint-initdb.d/01_init.sh"
+# DO NOT run with sudo on host machine!
+# =========================================
 set -e
+
+#SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#cd "$SCRIPT_DIR"
+#echo "Working directory: $(pwd)"
 
 # ----------------------------------------
 # 1. Create Database

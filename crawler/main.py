@@ -31,6 +31,7 @@ TIMEFRAME = '1h'    # 1 hour k lines
 
 def get_target_symbols():
     # Get TARGET_SYMBOLS from .env
+    # Modify .env if want to crawl other symbols
     env_sym = os.getenv("TARGET_SYMBOL")
     if env_sym:
         try:
@@ -134,12 +135,12 @@ def save_to_db(data_list):
             # ON CONFLICT DO UPDATE: if data exists, update source_region
             # This means: if HK and JP both crawled data, the database will retain the last source tag
             sql = """
-                INSERT INTO binance_klines 
-                (symbol, interval_type, open_time, close_time, 
-                open_price, high_price, low_price, close_price, volume, 
+                INSERT INTO crypto_data.crypto_klines
+                (symbol, interval, open_time, close_time,
+                open_price, high_price, low_price, close_price, volume,
                 source_region, raw_payload)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (symbol, interval_type, open_time) 
+                ON CONFLICT (symbol, interval, open_time)
                 DO UPDATE SET
                     source_region = EXCLUDED.source_region,
                     volume = EXCLUDED.volume,
@@ -168,15 +169,14 @@ if __name__ == "__main__":
     print(f"Starting Crawler. Region: {SOURCE_REGION}")
     
     # Safety Check: Ensure not running on US Master
-    if 'US-Master' in SOURCE_REGION and os.getenv("TEST_MODE") != "true":
+    if 'US-Master' in SOURCE_REGION :
         print("Warning: Running on US Master. Ensure this is intentional.")
-
     try:
         data = fetch_binance_klines()
         save_to_db(data)
     except Exception as e:
         print("Crawler Execution Failed!")
 
-        # return non-zero status code t
+        # return non-zero status code
         # Inform Airflow that task failed
         exit(1) 
