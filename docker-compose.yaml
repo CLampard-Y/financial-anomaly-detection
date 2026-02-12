@@ -78,7 +78,7 @@ services:
     container_name: airflow-scheduler
     command: scheduler
 
-    # Shares database and exexcutor configuration with webserver
+    # Same with webserver
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/airflow

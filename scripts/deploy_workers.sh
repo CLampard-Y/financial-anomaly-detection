@@ -23,20 +23,20 @@ JP_IP=${JP_IP}
 # -----------------------------------------
 echo ">>> Starting Worker Deployment Pipeline..."
 
-# Make sure in project root ????
+# Make sure in project root
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR/.."
 cd "$PROJECT_ROOT"
 
-# Build crawler image  ??
+# Build crawler image
 echo ">>> Building Crawler Image..."
-docker build -t binance-crawler:v1 ./crawler
+docker build -t binance-crawler ./crawler
 
-# Export image to tar  ??
+# Export image to tar
 echo ">>> Exporting Image to tar..."
-docker save -o crawler.tar binance-crawler:v1
+docker save -o crawler.tar binance-crawler
 
-# Define function: deploy to node ??
+# Define function: deploy to node
 deploy_to_node() {
     local NODE_IP=$1
     local NODE_NAME=$2
@@ -45,10 +45,10 @@ deploy_to_node() {
     echo ">>> Deploying to $NODE_NAME ($NODE_IP)..."
     
     # Upload tar to node
-    scp crawler.tar root@$NODE_IP:/root/
+    scp crawler.tar root@$NODE_IP:/home/DFS_Woker/
     
     # 远程加载镜像
-    ssh root@$NODE_IP "docker load -i /root/crawler.tar"
+    ssh root@$NODE_IP "docker load -i /home/DFS_Woker/crawler.tar"
     
     echo " $NODE_NAME Updated!"
 }
