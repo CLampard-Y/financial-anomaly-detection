@@ -42,32 +42,64 @@ def fetch_prices():
             # Attention: requests.get() wont raise exception if API is down
             response = requests.get(API_URL, timeout=10)    # timeout=10 sec
 
-            # Ask for JSON response:
-            # 200 OK: Successful request
-            # 404 Not Found: API not found -> exception
-            # 500 Internal Server Error: API error -> exception
-            # 503 Service Unavailable: API error -> exception
+            # Exam the response status code:
             response.raise_for_status()
+
+            # Analysis JSON response if status code normal
+            # If JSON valid, return JSONDecodeError
             return response.json()
         
         # print error message and sleep
         except Exception as e:
             print(f"Error fetching data: {e}")
             time.sleep(2)
+    # If all retries failed, raise exception
     raise Exception("Failed to fetch data after retries")
 
 # --------------------------------------------
 # 3. Write to remote US database
 # --------------------------------------------
 def save_to_db(data):
-        conn = psycopg2.connect(
+    try:
+        # Create connection by 'with' statement
+        # After connnection closed,realative cursor close automatically
+        with psycopg2.connect(
             host=DB_HOST,
             port=DB_PORT,
             database=DB_NAME,
             user=DB_USER,
             password=DB_PASS
-        )
-        cur = conn.cursor()
+        ) as conn:
+            cur = conn.cursor()
+
+            #  Get current time in UTC
+            utc_now = datetime.now(pytz.utc) 
         
+            # Iterate through API response data structure:
+            # {'bitcoin': {'usd': 42000, 'last_updated_at': ...}, ...}
+            for symbol, details in data.items():
+                price = details['usd']
+                sql = """
+                 INSERT INTO crypto_data.crypto_prices
+                    (symbol, price_usd, captured_at, source_region, raw_payload)
+                    VALUES (%s, %s, %s, %s, %s)
+                """
+
+                # Execute SQL statement
+                cur.execute(sql, (
+                    symbol.upper(),
+                    price,
+                    utc_now,
+                    SOURCE_REGION,  # Source worker tag
+                    json.dumps(details) # raw payload (JSONB)
+                ))
+                
+            conn.commit()
+            cur.close()
+            print(f"[{SOURCE_REGION}] Successfully saved {len(data)} records to US DB.")
+        
+    except Exception as e:
+        print(f"Database Error: {e}")
+        raise e
         
 
