@@ -66,7 +66,7 @@ def check_failover_and_alert():
 with DAG(
     'binance_global_sentinel',        # DAG Name
     default_args = default_args,
-    description = 'HA Pipeline for Binance Global OHLCV',
+    description = 'Pipeline for Binance Global OHLCV',
     schedule_interval = '0 * * * *',  # Run every hour
     start_date = days_ago(1),         # Crawl data from yesterday
     catchup = False,
