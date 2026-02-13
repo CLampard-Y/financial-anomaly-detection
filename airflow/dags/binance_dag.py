@@ -1,6 +1,7 @@
 # ==========================================
 #   Core DAG for Binance Global OHLCV
 # ==========================================
+# This DAG crawls Binance Global OHLCV data
 
 from airflow import DAG
 import os

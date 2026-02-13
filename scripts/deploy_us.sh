@@ -41,7 +41,7 @@ fi
 # -----------------------------------------
 # 3. Restart Infrastructure
 # -----------------------------------------
-# --build 确保如果有 Dockerfile 变更会重新构建
+# --build: rebuild images if Dockerfile changed
 echo ">>> Restarting Infrastructure..."
 docker compose up -d --build
 

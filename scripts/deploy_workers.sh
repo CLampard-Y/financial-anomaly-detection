@@ -47,7 +47,7 @@ deploy_to_node() {
     # Upload tar to node
     scp crawler.tar root@$NODE_IP:/home/DFS_Woker/
     
-    # 远程加载镜像
+    # Load image to node
     ssh root@$NODE_IP "docker load -i /home/DFS_Woker/crawler.tar"
     
     echo " $NODE_NAME Updated!"
