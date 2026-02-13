@@ -1,11 +1,11 @@
 # ==========================================
 # Distributed Financial Sentinel - Dashboard
 # ==========================================
-# Installation:
-#   pip install streamlit plotly pandas psycopg2-binary
+# Quick start:
+#   pip install -r requirements.txt
+#   streamlit run app.py
 #
-# Usage:
-#   streamlit run app.py  
+# Production Deployment: See README.md
 # ==========================================
 
 import streamlit as st
@@ -26,13 +26,13 @@ def get_data(symbol, limit=100):
     try:
         with psycopg2.connect(DB_URI) as conn:
             query = """
-                SELECT 
-                    open_time, 
-                    open_price, 
-                    high_price, 
-                    low_price, 
-                    close_price, 
-                    volume, 
+                SELECT
+                    open_time,
+                    open_price,
+                    high_price,
+                    low_price,
+                    close_price,
+                    volume,
                     source_region
                 FROM crypto_data.crypto_klines
                 WHERE symbol = %s
@@ -40,7 +40,6 @@ def get_data(symbol, limit=100):
                 LIMIT %s
             """
             df = pd.read_sql(query, conn, params=(symbol, limit))
-            conn.close()
         
         # Type conversion
         df['dt'] = pd.to_datetime(df['open_time'], unit='ms')
@@ -95,4 +94,49 @@ else:
         failover_count = df[df['source_region'].str.contains('Backup')].shape[0]
         st.metric("近期熔断次数 (Failover Count)", f"{failover_count}", help="日本节点接管任务的次数 (Backup Node run task Count)")
 
-   
+    # ------------------------------------------
+    # 4. Plotly Chart
+    # ------------------------------------------
+    # Two-axis chart: K lines, node status
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True, 
+        vertical_spacing=0.05, 
+        row_heights=[0.75, 0.25]
+    )
+
+    # [Layer 1] Candlestick
+    fig.add_trace(go.Candlestick(
+        x=df['dt'],
+        open=df['open_price'], high=df['high_price'],
+        low=df['low_price'], close=df['close_price'],
+        name='OHLC'
+    ), row=1, col=1)
+
+    # [Layer 2] Failover Proof
+    # Green = Primary (HK), Red = Backup (JP)
+    colors = df['source_region'].apply(lambda x: 'red' if 'Backup' in x else 'green')
+    
+    fig.add_trace(go.Scatter(
+        x=df['dt'], 
+        y=[1] * len(df), # dot on the same line
+        mode='markers',
+        marker=dict(size=12, color=colors, line=dict(width=1, color='DarkSlateGrey')),
+        name='Node Status',
+        text=df['source_region'],
+        hovertemplate="Time: %{x}<br>Source: %{text}"
+    ), row=2, col=1)
+
+    # Layout
+    fig.update_layout(
+        height=600,
+        xaxis_rangeslider_visible=False,
+        title_text=f"{symbol} 价格走势与分布式节点健康度",
+        template="plotly_dark" # Dark theme
+    )
+    
+    # Hide Y axis
+    fig.update_yaxes(showticklabels=False, row=2, col=1)
+    fig.update_yaxes(title_text="Price (USDT)", row=1, col=1)
+
+    st.plotly_chart(fig, use_container_width=True)
