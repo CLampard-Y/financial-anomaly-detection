@@ -43,16 +43,17 @@ with DAG(
 
     # [Task 1]. Delete old data
     # Logic: delete data ('open_time' older than RETENTION_DAYS)
-    # Attention: 'open_time' is BIGINT (ms),need convertion
-    task_delete_old_date = PythonOperator(
+    # Attention: 'open_time' is BIGINT (ms), need conversion
+    task_delete_old_date = PostgresOperator(
         task_id = 'task_delete_old_data',
         postgres_conn_id = 'postgres_default',
         sql = """
             DELETE FROM crypto_data.crypto_klines
             WHERE open_time < (
-                EXTRACT(EPOCH FROM NOW()) * 1000 - %s * 86400000
+                EXTRACT(EPOCH FROM NOW()) * 1000 - %(retention_days)s * 86400000
             )
-        """
+        """,
+        parameters = {'retention_days': RETENTION_DAYS}
     )
 
     # [Task 2]. Vacuum database

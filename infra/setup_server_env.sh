@@ -14,23 +14,29 @@ echo "==================================="
 # ----------------------------------------
 # 1. System Update & Base Dependencies
 # ----------------------------------------
-echo "[1/8] Updating system and installing base dependencies..."
-export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+# Smart detection: skip heavy apt-get upgrade if Docker is already present
+# (indicates Server-Ops Layer 1 or prior setup has already run)
+if command -v docker &> /dev/null && command -v curl &> /dev/null && command -v ufw &> /dev/null; then
+    echo "[1/8] Base environment detected (Docker + core tools present). Skipping system upgrade."
+else
+    echo "[1/8] Updating system and installing base dependencies..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 
-# Install essential packages that may be missing on minimal installations
-apt-get install -y \
-    curl \
-    git \
-    openssh-client \
-    openssl \
-    ufw \
-    ca-certificates \
-    gnupg \
-    lsb-release
+    # Install essential packages that may be missing on minimal installations
+    apt-get install -y \
+        curl \
+        git \
+        openssh-client \
+        openssl \
+        ufw \
+        ca-certificates \
+        gnupg \
+        lsb-release
 
 echo "Base dependencies installed."
+fi
 
 # ----------------------------------------
 # 2. Install Docker & Docker Compose

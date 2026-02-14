@@ -17,7 +17,7 @@ from datetime import datetime
 # US Server information
 DB_HOST = os.getenv("DB_HOST")                  # IP
 DB_PORT = os.getenv("DB_PORT", "5432")          # database port
-DB_NAME = os.getenv("DB_NAME", "crypto_data")   # database name
+DB_NAME = os.getenv("DB_NAME", "crypto")        # database name (crypto db, crypto_data schema)
 DB_USER = os.getenv("DB_USER", "airflow")       # database user
 DB_PASS = os.getenv("DB_PASS", "airflow")       # database password
 
