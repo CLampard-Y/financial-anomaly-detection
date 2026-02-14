@@ -233,12 +233,80 @@ bash scripts/deploy_workers.sh
 5. 在远程节点加载镜像
 6. 清理本地临时文件
 
-### 配置 Airflow 连接
+### 激活爬虫（关键步骤）
 
-首次部署后，需要注册 SSH 连接：
+Worker 镜像分发完成后，还需要在 US Master 上完成以下激活操作，爬虫才会正式开始工作：
+
+#### 步骤 1：注册 Airflow 连接 & 激活 DAG
 
 ```bash
+cd /home/Data-Analysis-Projects/02_Distributed_Financial_Sentinel
 docker exec -i airflow-scheduler bash < airflow/dags/setup_airflow.sh
+```
+
+此脚本会一次性完成：
+- 注册 `ssh_hk` 连接（SSH 到香港节点）
+- 注册 `ssh_jp` 连接（SSH 到日本节点）
+- 注册 `postgres_default` 连接（指向 crypto 业务数据库）
+- 激活 `binance_global_sentinel` DAG（每小时爬取）
+- 激活 `maintenance_data` DAG（每日清理）
+
+#### 步骤 2：验证 DAG 已激活
+
+```bash
+# 查看 DAG 列表和状态
+docker exec airflow-scheduler airflow dags list
+```
+
+期望输出中 `binance_global_sentinel` 和 `maintenance_data` 的 `paused` 列为 `False`。
+
+或者打开浏览器访问 `http://<服务器IP>:8080`，确认两个 DAG 的开关为 ON（蓝色）。
+
+#### 步骤 3：手动触发首次爬取（可选）
+
+DAG 设定为每小时整点自动运行。如果不想等到下一个整点，可以手动触发：
+
+```bash
+# 手动触发一次爬取
+docker exec airflow-scheduler airflow dags trigger binance_global_sentinel
+```
+
+#### 步骤 4：验证爬虫已成功写入数据
+
+等待任务完成后（约 1-2 分钟），检查数据库：
+
+```bash
+# 查询最新写入的数据
+docker exec pipeline-db psql -U airflow -d crypto -c "
+    SELECT symbol, source_region, close_price, 
+           to_timestamp(open_time/1000) as time
+    FROM crypto_data.crypto_klines 
+    ORDER BY created_at DESC 
+    LIMIT 5;
+"
+```
+
+期望输出（示例）：
+
+```
+  symbol   | source_region | close_price |        time
+-----------+---------------+-------------+---------------------
+ BTC/USDT  | HK-Primary    | 67234.5600  | 2024-01-15 08:00:00
+ ETH/USDT  | HK-Primary    |  3456.7800  | 2024-01-15 08:00:00
+ SOL/USDT  | HK-Primary    |   123.4500  | 2024-01-15 08:00:00
+ DOGE/USDT | HK-Primary    |     0.1234  | 2024-01-15 08:00:00
+```
+
+如果 `source_region` 显示 `HK-Primary`，说明主节点工作正常。如果显示 `JP-Backup`，说明 HK 节点故障，系统已自动切换到日本备用节点（熔断机制生效）。
+
+#### 步骤 5：查看任务执行日志
+
+```bash
+# 查看最近的 DAG 运行记录
+docker exec airflow-scheduler airflow dags list-runs -d binance_global_sentinel --limit 5
+
+# 查看具体任务日志（在 Airflow UI 中更直观）
+# 浏览器访问: http://<服务器IP>:8080 → 点击 DAG → Graph → 点击任务方块 → Log
 ```
 
 ---
@@ -424,4 +492,4 @@ docker compose up -d    # 数据库会自动重新初始化
 
 ---
 
-> 手册版本：v2.0 | 基于跨仓库 (Server-Ops + Sentinel) E2E 集成测试验证通过
+> 手册版本：v2.1 | 补充爬虫激活链路与数据验证流程

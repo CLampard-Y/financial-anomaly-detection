@@ -56,13 +56,36 @@ deploy_to_node() {
     echo "---------------------------------"
     echo ">>> Deploying to $NODE_NAME ($NODE_IP)..."
     
+    # Ensure target directory exists on worker node
+    echo "  Checking if /home/DFS_Worker exists on $NODE_NAME..."
+    ssh root@$NODE_IP "mkdir -p /home/DFS_Worker"
+    
+    if [ $? -eq 0 ]; then
+        echo "  ✓ Directory ready on $NODE_NAME"
+    else
+        echo "  ✗ Failed to create directory on $NODE_NAME"
+        return 1
+    fi
+    
     # Upload tar to node
-    scp crawler.tar root@$NODE_IP:/home/DFS_Woker/
+    echo "  Uploading crawler image to $NODE_NAME..."
+    scp crawler.tar root@$NODE_IP:/home/DFS_Worker/
+    
+    if [ $? -ne 0 ]; then
+        echo "  ✗ Failed to upload image to $NODE_NAME"
+        return 1
+    fi
     
     # Load image to node
-    ssh root@$NODE_IP "docker load -i /home/DFS_Woker/crawler.tar"
+    echo "  Loading image on $NODE_NAME..."
+    ssh root@$NODE_IP "docker load -i /home/DFS_Worker/crawler.tar"
     
-    echo " $NODE_NAME Updated!"
+    if [ $? -eq 0 ]; then
+        echo "  ✓ $NODE_NAME deployment completed successfully!"
+    else
+        echo "  ✗ Failed to load image on $NODE_NAME"
+        return 1
+    fi
 }
 
 # Deploy to HK/JP nodes

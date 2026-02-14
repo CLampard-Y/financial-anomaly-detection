@@ -138,7 +138,13 @@ echo "==================================="
 echo "Database Configuration"
 echo "==================================="
 echo "Enter PostgreSQL password for user 'airflow':"
-echo "(Note: Avoid special characters like @ : / in password)"
+echo ""
+echo "⚠️  IMPORTANT: Avoid these special characters in password:"
+echo "   @ : / # ? & = (they break database connection URLs)"
+echo ""
+echo "✓  Recommended: Use only letters, numbers, underscore, hyphen"
+echo "   Example: airflow123, my_secure_pass, data-2024"
+echo ""
 read -s POSTGRES_PASSWORD
 echo ""
 echo "Confirm password:"
@@ -147,16 +153,34 @@ echo ""
 
 # Validate password match
 if [ "$POSTGRES_PASSWORD" != "$POSTGRES_PASSWORD_CONFIRM" ]; then
-    echo "Error: Passwords do not match!"
+    echo "✗ Error: Passwords do not match!"
     exit 1
 fi
+
+# Validate password does not contain problematic characters
+if [[ "$POSTGRES_PASSWORD" =~ [@:/\#\?\&=] ]]; then
+    echo "✗ Error: Password contains special characters that will cause connection issues!"
+    echo "  Detected: @ : / # ? & or ="
+    echo "  Please use only: a-z A-Z 0-9 _ -"
+    exit 1
+fi
+
+echo "✓ Password validated successfully"
 
 # Generate Fernet key
 echo "Generating Fernet encryption key..."
 FERNET_KEY=$(docker run --rm apache/airflow:2.7.1 python -c \
-  "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+  "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" | tr -d '\n\r')
 
-# Create .env file
+# Validate Fernet key was generated
+if [ -z "$FERNET_KEY" ]; then
+    echo "✗ Error: Failed to generate Fernet key"
+    exit 1
+fi
+
+echo "✓ Fernet key generated successfully"
+
+# Create .env file with proper formatting
 cat > .env << EOF
 POSTGRES_USER=airflow
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
@@ -196,15 +220,14 @@ echo "✓ All data directories created and secured within: $(pwd)"
 # Pull latest images
 docker compose pull
 
-# Start services in detached mode
-docker compose up -d
-
 # ----------------------------------------
-# Intelligent waiting for PostgreSQL and Airflow initialization
+# CRITICAL: Start PostgreSQL first, then initialize Airflow database
 # ----------------------------------------
-echo "Waiting for PostgreSQL to be fully ready..."
+echo "Starting PostgreSQL container..."
+docker compose up -d postgres
 
 # Wait for postgres container to be healthy (max 60 seconds)
+echo "Waiting for PostgreSQL to be fully ready..."
 RETRY_COUNT=0
 MAX_RETRIES=12
 until docker exec pipeline-db pg_isready -U airflow > /dev/null 2>&1; do
@@ -229,16 +252,34 @@ else
     echo "  Init script may have failed. Check logs with: docker logs pipeline-db"
 fi
 
-# Wait for Airflow containers to be running
-echo "Waiting for Airflow containers to start..."
-sleep 10
-
-# Initialize Airflow metadata database
+# ----------------------------------------
+# Initialize Airflow metadata database BEFORE starting services
+# ----------------------------------------
 echo "Initializing Airflow metadata database..."
-docker exec airflow-webserver airflow db migrate
+echo "  This will create all required tables in the 'airflow' database..."
 
-# Wait for migration to complete
-sleep 5
+# Use 'docker compose run' to execute one-time initialization
+# This creates a temporary container, runs the command, and exits
+docker compose run --rm airflow-webserver airflow db migrate
+
+if [ $? -ne 0 ]; then
+    echo "✗ Airflow database migration failed!"
+    echo "  Check connection string in .env file"
+    echo "  Ensure password does not contain special characters: @ : / # ? &"
+    exit 1
+fi
+
+echo "✓ Airflow metadata database initialized successfully"
+
+# ----------------------------------------
+# Now start all Airflow services
+# ----------------------------------------
+echo "Starting Airflow services (webserver and scheduler)..."
+docker compose up -d airflow-webserver airflow-scheduler
+
+# Wait for services to be fully running
+echo "Waiting for Airflow services to start..."
+sleep 10
 
 # Generate random admin password
 ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
