@@ -19,8 +19,9 @@ import requests
 # ------------------------------------------
 # 1. Configuration
 # ------------------------------------------
-# Get US Master IP (read from .env)
+# Get configuration from environment (passed via docker-compose.yaml)
 US_IP = os.getenv("US_IP")
+DB_PASS = os.getenv("POSTGRES_PASSWORD", "airflow")
 
 # Default parameters
 default_args = {
@@ -76,28 +77,23 @@ with DAG(
     # Start tag
     start = EmptyOperator(task_id='start')
     
-    # [Docker Command]
-    # Get crypto symbols from Airflow Variable
-    # Attention: If Variable not set, use default values
-    # Use binance-crawler: image
-    cmd_template = """
-        docker run --rm \
-        -e DB_HOST={db_host} \
-        -e DB_PASS=airflow \
-        -e SOURCE_REGION={region} \
-        
-        # Read crypto symbols from var.json.crypto_symbols
-        # default: ["BTC/USDT", "ETH/USDT"]
-        -e TARGET_SYMBOLS='{{{{ var.json.crypto_symbols | default(["BTC/USDT", "ETH/USDT"]) }}}}' \
-        
-        # Image name
-        binance-crawler
-    """
+            # [Docker Command]
+    # Runs binance-crawler container on remote worker node
+    # NOTE: No comments or blank lines allowed inside the command string!
+    #       SSHOperator sends this as a raw shell command to remote nodes.
+    cmd_template = (
+        "docker run --rm"
+        " -e DB_HOST={db_host}"
+        " -e DB_NAME=crypto"
+        " -e DB_PASS={db_pass}"
+        " -e SOURCE_REGION={region}"
+        " binance-crawler"
+    )
     # [Task 1]. HK Primary Node   
     task_crawl_hk = SSHOperator(
         task_id='crawl_primary_hk',
         ssh_conn_id='ssh_hk', # Same as the added connection
-        command=cmd_template.format(db_host=US_IP, region='HK-Primary'),
+        command=cmd_template.format(db_host=US_IP, db_pass=DB_PASS, region='HK-Primary'),
         cmd_timeout=300 # timeout: 300 sec (5 min)
     )
 
@@ -105,7 +101,7 @@ with DAG(
     task_crawl_jp = SSHOperator(
         task_id='crawl_backup_jp',
         ssh_conn_id='ssh_jp',
-        command=cmd_template.format(db_host=US_IP, region='JP-Backup'),
+        command=cmd_template.format(db_host=US_IP, db_pass=DB_PASS, region='JP-Backup'),
         
         # Logic: Only run when HK fails
         trigger_rule=TriggerRule.ALL_FAILED,

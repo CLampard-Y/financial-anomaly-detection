@@ -46,7 +46,17 @@ services:
   airflow-webserver:
     image: apache/airflow:2.7.1
     container_name: airflow-webserver
-    command: webserver
+    user: root
+
+    command: >-
+      bash -c "
+        mkdir -p /home/airflow/.ssh &&
+        cp /tmp/ssh-keys/* /home/airflow/.ssh/ 2>/dev/null || true &&
+        chmod 700 /home/airflow/.ssh &&
+        chmod 600 /home/airflow/.ssh/id_rsa 2>/dev/null || true &&
+        chown -R airflow:root /home/airflow/.ssh &&
+        exec gosu airflow airflow webserver
+      "
 
     # Airflow Web UI: http://<US_IP>:8080
     ports:
@@ -74,10 +84,8 @@ services:
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
 
-      # Mounting Host SSH keys for remote execution capability
-      # :ro means read-only (for security)
-      # require SSH key pair configured on host machine
-      - /root/.ssh:/home/airflow/.ssh:ro
+      # Mount SSH keys to temp location, then copy with correct permissions in entrypoint
+      - /root/.ssh:/tmp/ssh-keys:ro
     
     # Start only after postgres health check pass
     depends_on:
@@ -91,13 +99,28 @@ services:
   airflow-scheduler:
     image: apache/airflow:2.7.1
     container_name: airflow-scheduler
-    command: scheduler
+    user: root
+    command: >-
+      bash -c "
+        mkdir -p /home/airflow/.ssh &&
+        cp /tmp/ssh-keys/* /home/airflow/.ssh/ 2>/dev/null || true &&
+        chmod 700 /home/airflow/.ssh &&
+        chmod 600 /home/airflow/.ssh/id_rsa 2>/dev/null || true &&
+        chown -R airflow:root /home/airflow/.ssh &&
+        exec gosu airflow airflow scheduler
+      "
 
     # Same with webserver
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/${POSTGRES_DB:-airflow}
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+
+      # Credentials for setup_airflow.sh to register postgres_default connection
+      - POSTGRES_USER=${POSTGRES_USER:-airflow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-airflow}
+
+      # Worker node IPs
       - HK_IP=${HK_IP}
       - JP_IP=${JP_IP}
       - US_IP=${US_IP}
@@ -105,7 +128,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
-      - /root/.ssh:/home/airflow/.ssh:ro
+      - /root/.ssh:/tmp/ssh-keys:ro
     depends_on:
       postgres:
         condition: service_healthy

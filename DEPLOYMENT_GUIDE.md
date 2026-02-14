@@ -241,6 +241,12 @@ Worker 镜像分发完成后，还需要在 US Master 上完成以下激活操�
 
 ```bash
 cd /home/Data-Analysis-Projects/02_Distributed_Financial_Sentinel
+
+# 容器是以 root 启动, docker exec 默认也以 root 进入
+# 但 Airflow 装在 airflow 用户的 Python 环境里
+# 需要加 -u airflow 来切换到 airflow 用户
+docker exec -i -u airflow airflow-scheduler bash < airflow/dags/setup_airflow.sh
+
 docker exec -i airflow-scheduler bash < airflow/dags/setup_airflow.sh
 ```
 
@@ -267,6 +273,9 @@ docker exec airflow-scheduler airflow dags list
 DAG 设定为每小时整点自动运行。如果不想等到下一个整点，可以手动触发：
 
 ```bash
+# 同样记得加 -u airflow 来切换到 airflow 用户
+docker exec -u airflow airflow-scheduler airflow dags trigger binance_global_sentinel
+
 # 手动触发一次爬取
 docker exec airflow-scheduler airflow dags trigger binance_global_sentinel
 ```
