@@ -1,8 +1,16 @@
-# =================================
+# ==========================================
 # Airflow Docker Compose File
-# =================================
+# ==========================================
 # Startup sequence: postgres -> webserver + scheduler (parallel)
-
+#
+# Usage: (Make sure in project directory)
+#   1. Create folder: mkdir -p data/postgres
+#                     mkdir -p airflow/logs
+#                     mkdir -p airflow/plugins
+#   2. Set permissions: chmod 700 data/postgres
+#   3. docker-compose up -d
+#   4. Exam data folder: ls -la data/postgres
+# ==========================================
 
 version: '3.8'
 
@@ -23,7 +31,8 @@ services:
       # Security Note: Protected by UFW/IPTables on host machine
       - "5432:5432"
     volumes:
-      - postgres-db-volume:/var/lib/postgresql/data
+      # Store PostgreSQL data in project directory for isolation
+      - ./data/postgres:/var/lib/postgresql/data
       - ./infra/init-db:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
@@ -48,16 +57,22 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
 
       # Database connection string (credentials from .env file)
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/${POSTGRES_DB:-airflow}
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
 
       # Key for encrypting connection credentials
+      # Reads AIRFLOW_FERNET_KEY from .env file
       - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+
+      # Worker node IPs (passed from .env for DAGs and connection setup)
+      - HK_IP=${HK_IP}
+      - JP_IP=${JP_IP}
+      - US_IP=${US_IP}
     volumes:
       # Mount project directories: DAGs, Logs, and Plugins
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
 
       # Mounting Host SSH keys for remote execution capability
       # :ro means read-only (for security)
@@ -81,20 +96,20 @@ services:
     # Same with webserver
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/${POSTGRES_DB:-airflow}
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - HK_IP=${HK_IP}
+      - JP_IP=${JP_IP}
+      - US_IP=${US_IP}
     volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
       - /root/.ssh:/home/airflow/.ssh:ro
     depends_on:
       postgres:
         condition: service_healthy
     restart: always
 
-# Define Volumes for Persistent Storage
-# Volume persist after container deletion
-# Normal folder : /var/lib/docker/volumes/
-volumes:
-  postgres-db-volume:
+# Note: All data is stored in project directory for complete isolation
+# No named volumes needed - using bind mounts for all persistent data

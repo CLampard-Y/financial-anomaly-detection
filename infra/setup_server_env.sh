@@ -12,10 +12,25 @@ echo "US Master Server Setup"
 echo "==================================="
 
 # ----------------------------------------
-# 1. System Update
+# 1. System Update & Base Dependencies
 # ----------------------------------------
-echo "[1/8] Updating system packages..."
-apt-get update && apt-get upgrade -y
+echo "[1/8] Updating system and installing base dependencies..."
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+
+# Install essential packages that may be missing on minimal installations
+apt-get install -y \
+    curl \
+    git \
+    openssh-client \
+    openssl \
+    ufw \
+    ca-certificates \
+    gnupg \
+    lsb-release
+
+echo "Base dependencies installed."
 
 # ----------------------------------------
 # 2. Install Docker & Docker Compose
@@ -25,9 +40,23 @@ if ! command -v docker &> /dev/null; then
     curl -fsSL https://get.docker.com -o get-docker.sh
     sh get-docker.sh
     rm get-docker.sh
+
+    # Ensure Docker daemon is started and enabled on boot
+    systemctl start docker
+    systemctl enable docker
+    echo "Docker installed and started."
 else
     echo "[2/8] Docker already installed."
+    # Ensure daemon is running even if Docker was pre-installed
+    systemctl start docker 2>/dev/null || true
 fi
+
+# Verify Docker Compose plugin is available
+if ! docker compose version &> /dev/null; then
+    echo "Installing Docker Compose plugin..."
+    apt-get install -y docker-compose-plugin
+fi
+echo "Docker Compose version: $(docker compose version --short)"
 
 # ----------------------------------------
 # 3. Generate SSH Keys
@@ -90,7 +119,12 @@ echo "Firewall configured."
 # 6. Generate Fernet Key & Create .env
 # ----------------------------------------
 echo "[6/8] Generating Fernet key and creating .env file..."
-cd /opt/data-pipeline/infrastructure
+
+# Resolve project root: script is in infra/, project root is one level up
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$SCRIPT_DIR/.."
+cd "$PROJECT_ROOT"
+echo "Project root: $(pwd)"
 
 # Prompt for PostgreSQL password
 echo ""
@@ -112,10 +146,10 @@ if [ "$POSTGRES_PASSWORD" != "$POSTGRES_PASSWORD_CONFIRM" ]; then
 fi
 
 # Validate password strength
-if [ ${#POSTGRES_PASSWORD} -lt 12 ]; then
-    echo "Error: Password must be at least 12 characters!"
-    exit 1
-fi
+#if [ ${#POSTGRES_PASSWORD} -lt 12 ]; then
+#    echo "Error: Password must be at least 12 characters!"
+#    exit 1
+#fi
 
 # Generate Fernet key
 echo "Generating Fernet encryption key..."
@@ -126,7 +160,11 @@ FERNET_KEY=$(docker run --rm apache/airflow:2.7.1 python -c \
 cat > .env << EOF
 POSTGRES_USER=airflow
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-FERNET_KEY=$FERNET_KEY
+POSTGRES_DB=airflow
+AIRFLOW_FERNET_KEY=$FERNET_KEY
+HK_IP=$HK_IP
+JP_IP=$JP_IP
+US_IP=$(hostname -I | awk '{print $1}')
 EOF
 
 chmod 600 .env
@@ -136,6 +174,14 @@ echo ".env file created with secure permissions (600)"
 # 7. Start Infrastructure
 # ----------------------------------------
 echo "[7/8] Starting Docker services..."
+
+# Create required data directories
+echo "Creating data directories..."
+mkdir -p data/postgres
+mkdir -p airflow/logs
+mkdir -p airflow/plugins
+mkdir -p data_lake/binance_data_lake
+chmod 700 data/postgres
 
 # Pull latest images
 docker compose pull
@@ -169,11 +215,11 @@ echo "[8/8] Verifying database initialization..."
 sleep 5
 
 # Check if crypto_data database exists
-docker exec pipeline-db psql -U airflow -lqt | cut -d \| -f 1 | grep -qw crypto_data
+docker exec pipeline-db psql -U airflow -lqt | cut -d \| -f 1 | grep -qw crypto
 if [ $? -eq 0 ]; then
-    echo "✓ Business database 'crypto_data' initialized successfully"
+    echo "✓ Business database 'crypto' initialized successfully"
 else
-    echo "✗ Warning: Business database 'crypto_data' not found"
+    echo "✗ Warning: Business database 'crypto' not found"
     echo "  Init script may have failed. Check logs with:"
     echo "  docker logs pipeline-db"
 fi
@@ -192,7 +238,7 @@ echo "-----------------------------------"
 echo ""
 echo "Database Status:"
 echo "  - Airflow metadata: airflow"
-echo "  - Business data: crypto_data"
+echo "  - Business data: crypto (schema: crypto_data)"
 echo ""
 echo "Worker Nodes:"
 echo "  - HK Node: $HK_IP"
