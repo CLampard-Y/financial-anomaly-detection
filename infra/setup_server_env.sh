@@ -115,8 +115,8 @@ echo "SSH directory permissions secured (700)"
 # ----------------------------------------
 echo "[5/8] Configuring UFW firewall..."
 ufw --force enable
-ufw allow 22/tcp                                      # SSH
-ufw allow 8080/tcp                                    # Airflow Web UI
+ufw allow 19140/tcp                                  # SSH port
+ufw allow 8080/tcp                                   # Airflow Web UI
 ufw allow from $HK_IP to any port 5432 proto tcp     # PostgreSQL for HK
 ufw allow from $JP_IP to any port 5432 proto tcp     # PostgreSQL for JP
 echo "Firewall configured."
@@ -138,7 +138,7 @@ echo "==================================="
 echo "Database Configuration"
 echo "==================================="
 echo "Enter PostgreSQL password for user 'airflow':"
-echo "(Minimum 12 characters, include uppercase, lowercase, numbers)"
+echo "(Note: Avoid special characters like @ : / in password)"
 read -s POSTGRES_PASSWORD
 echo ""
 echo "Confirm password:"
@@ -150,12 +150,6 @@ if [ "$POSTGRES_PASSWORD" != "$POSTGRES_PASSWORD_CONFIRM" ]; then
     echo "Error: Passwords do not match!"
     exit 1
 fi
-
-# Validate password strength
-#if [ ${#POSTGRES_PASSWORD} -lt 12 ]; then
-#    echo "Error: Password must be at least 12 characters!"
-#    exit 1
-#fi
 
 # Generate Fernet key
 echo "Generating Fernet encryption key..."
@@ -181,13 +175,23 @@ echo ".env file created with secure permissions (600)"
 # ----------------------------------------
 echo "[7/8] Starting Docker services..."
 
-# Create required data directories
-echo "Creating data directories..."
+# Create required data directories (all within project root for isolation)
+echo "Creating data directories in project root: $(pwd)"
 mkdir -p data/postgres
 mkdir -p airflow/logs
 mkdir -p airflow/plugins
 mkdir -p data_lake/binance_data_lake
+
+# Set PostgreSQL data directory permissions (required by postgres image)
 chmod 700 data/postgres
+
+# CRITICAL: Airflow container runs as UID 50000 (airflow user)
+# Must set ownership for logs and plugins to avoid permission errors
+echo "Setting Airflow directory ownership (UID 50000)..."
+chown -R 50000:50000 airflow/logs
+chown -R 50000:50000 airflow/plugins
+
+echo "✓ All data directories created and secured within: $(pwd)"
 
 # Pull latest images
 docker compose pull
@@ -195,9 +199,46 @@ docker compose pull
 # Start services in detached mode
 docker compose up -d
 
-# Wait for services to be healthy
-echo "Waiting for services to initialize..."
-sleep 15
+# ----------------------------------------
+# Intelligent waiting for PostgreSQL and Airflow initialization
+# ----------------------------------------
+echo "Waiting for PostgreSQL to be fully ready..."
+
+# Wait for postgres container to be healthy (max 60 seconds)
+RETRY_COUNT=0
+MAX_RETRIES=12
+until docker exec pipeline-db pg_isready -U airflow > /dev/null 2>&1; do
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+        echo "✗ PostgreSQL failed to start after 60 seconds"
+        echo "  Check logs: docker logs pipeline-db"
+        exit 1
+    fi
+    echo "  Waiting for PostgreSQL... ($RETRY_COUNT/$MAX_RETRIES)"
+    sleep 5
+done
+
+# Verify crypto database was created by init script
+echo "Verifying business database 'crypto' exists..."
+sleep 3  # Give init script time to complete
+docker exec pipeline-db psql -U airflow -lqt | cut -d \| -f 1 | grep -qw crypto
+if [ $? -eq 0 ]; then
+    echo "✓ Business database 'crypto' initialized successfully"
+else
+    echo "✗ Warning: Business database 'crypto' not found"
+    echo "  Init script may have failed. Check logs with: docker logs pipeline-db"
+fi
+
+# Wait for Airflow containers to be running
+echo "Waiting for Airflow containers to start..."
+sleep 10
+
+# Initialize Airflow metadata database
+echo "Initializing Airflow metadata database..."
+docker exec airflow-webserver airflow db migrate
+
+# Wait for migration to complete
+sleep 5
 
 # Generate random admin password
 ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
@@ -210,24 +251,21 @@ docker exec airflow-webserver airflow users create \
   --lastname User \
   --role Admin \
   --email admin@example.com \
-  --password "$ADMIN_PASSWORD"
+  --password "$ADMIN_PASSWORD" 2>/dev/null || echo "  (User may already exist, skipping)"
 
 # ----------------------------------------
 # 8. Verify Database Initialization
 # ----------------------------------------
-echo "[8/8] Verifying database initialization..."
+echo "[8/8] Verifying deployment status..."
 
-# Wait for database to be fully ready
-sleep 5
-
-# Check if crypto_data database exists
-docker exec pipeline-db psql -U airflow -lqt | cut -d \| -f 1 | grep -qw crypto
+# Check Airflow database connection
+echo "Checking Airflow database connection..."
+docker exec airflow-webserver airflow db check > /dev/null 2>&1
 if [ $? -eq 0 ]; then
-    echo "✓ Business database 'crypto' initialized successfully"
+    echo "✓ Airflow metadata database connected successfully"
 else
-    echo "✗ Warning: Business database 'crypto' not found"
-    echo "  Init script may have failed. Check logs with:"
-    echo "  docker logs pipeline-db"
+    echo "✗ Warning: Airflow database connection failed"
+    echo "  Check logs: docker logs airflow-webserver"
 fi
 
 echo ""

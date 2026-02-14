@@ -79,7 +79,15 @@ ssh root@<你的服务器IP>
 apt-get update && apt-get install -y git
 
 git clone <Server-Ops仓库地址> /home/Server-Ops
+
+# 直接克隆整个仓库 (不推荐)
 git clone <Data-Analysis仓库地址> /home/Data-Analysis-Projects
+
+# Git 稀疏检出 (Sparse Checkout)
+# 只克隆指定目录( 02_Distributed_Financial_Sentinel )
+git clone --filter=blob:none --sparse <Data-Analysis仓库地址> /home/Data-Analysis-Projects
+cd /home/Data-Analysis-Projects
+git sparse-checkout set 02_Distributed_Financial_Sentinel
 ```
 
 #### A-3：执行 Server-Ops 基础设施初始化
