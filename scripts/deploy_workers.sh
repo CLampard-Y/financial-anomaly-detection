@@ -12,20 +12,32 @@
 
 set -e
 
-# -----------------------------------------
-# 1. Get IPs from .env
-# -----------------------------------------
-HK_IP=${HK_IP}
-JP_IP=${JP_IP}
-
-# -----------------------------------------
-# 2. Disrtribute to HK/JP nodes
-# -----------------------------------------
-echo ">>> Starting Worker Deployment Pipeline..."
-
-# Make sure in project root
+# Resolve project root (script lives in scripts/)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR/.."
+cd "$PROJECT_ROOT"
+
+# -----------------------------------------
+# 1. Load .env and get IPs
+# -----------------------------------------
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+else
+    echo "Error: .env file not found in project root."
+    exit 1
+fi
+
+if [ -z "$HK_IP" ] || [ -z "$JP_IP" ]; then
+    echo "Error: HK_IP or JP_IP not set in .env"
+    exit 1
+fi
+
+# -----------------------------------------
+# 2. Distribute to HK/JP nodes
+# -----------------------------------------
+echo ">>> Starting Worker Deployment Pipeline..."
 cd "$PROJECT_ROOT"
 
 # Build crawler image
