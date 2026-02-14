@@ -19,7 +19,7 @@ import os
 # 1. Database Configuration
 # ------------------------------------------
 # Dashboard runs on US Master, connect to localhost
-DB_URI = "host=localhost dbname=crypto_data user=airflow password=airflow"
+DB_URI = "host=localhost dbname=crypto user=airflow password=airflow"
 
 def get_data(symbol, limit=100):
     # Load data from crypto_data.crypto_klines

@@ -7,10 +7,12 @@ import os
 from datetime import datetime, timedelta
 
 # Database connection
-DB_URI = "host=localhost dbname=crypto_data user=airflow password=airflow"
+DB_URI = "host=localhost dbname=crypto user=airflow password=airflow"
 
-# Data lake directory
-DATA_LAKE_DIR = "/home/02_Distributed_Financial_Sentinel/data_lake/binance_data_lake"
+# Data lake directory (relative to project root for portability)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.join(SCRIPT_DIR, "..")
+DATA_LAKE_DIR = os.path.join(PROJECT_ROOT, "data_lake", "binance_data_lake")
 
 # Export Postgres data to Parquet
 # Use for tiered storage
@@ -49,6 +51,9 @@ def export_snapshot():
     
     # Parquet: columnar storage
     # Faster than CSV
+    # Ensure data lake directory exists
+    os.makedirs(DATA_LAKE_DIR, exist_ok=True)
+
     date_str = datetime.now().strftime('%Y%m%d')
     output_path = os.path.join(DATA_LAKE_DIR, f"snapshot_{date_str}.parquet")
     df.to_parquet(output_path, index=False)
