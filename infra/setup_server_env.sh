@@ -114,12 +114,24 @@ echo "SSH directory permissions secured (700)"
 # 5. Configure Firewall
 # ----------------------------------------
 echo "[5/8] Configuring UFW firewall..."
+
+# Detect the active SSH port to avoid locking ourselves out.
+# - Prefer sshd runtime config; fall back to sshd_config; default to 22.
+SSH_PORT=""
+if command -v sshd &> /dev/null; then
+    SSH_PORT=$(sshd -T 2>/dev/null | awk '/^port / {print $2; exit}')
+fi
+if [ -z "$SSH_PORT" ] && [ -f /etc/ssh/sshd_config ]; then
+    SSH_PORT=$(grep -E '^[[:space:]]*Port[[:space:]]+[0-9]+' /etc/ssh/sshd_config | awk '{print $2; exit}')
+fi
+SSH_PORT=${SSH_PORT:-22}
+
 ufw --force enable
-ufw allow 19140/tcp                                  # SSH port
+ufw allow "${SSH_PORT}/tcp"                          # SSH port (detected)
 ufw allow 8080/tcp                                   # Airflow Web UI
 ufw allow from $HK_IP to any port 5432 proto tcp     # PostgreSQL for HK
 ufw allow from $JP_IP to any port 5432 proto tcp     # PostgreSQL for JP
-echo "Firewall configured."
+echo "Firewall configured. SSH port allowed: ${SSH_PORT}/tcp"
 
 # ----------------------------------------
 # 6. Generate Fernet Key & Create .env
