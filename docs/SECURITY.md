@@ -1,96 +1,75 @@
-# Security Checklist
-## 🔒 Sensitive Information Protection Status
-### ✅ Secured Files
-#### 1. **docker-compose.yaml**
-- ✅ 所有凭据使用环境变量：`${POSTGRES_USER}`, `${POSTGRES_PASSWORD}`, `${FERNET_KEY}`
-- ✅ 无硬编码敏感信息
-- ✅ 默认值仅作为fallback使用
-#### 2. **.gitignore**
-- ✅ `.env` 文件已被忽略
-- ✅ 防止凭据意外提交
-#### 3. **.env.example**
-- ✅ 仅包含占位符值
-- ✅ 可安全提交到仓库
-- ✅ 作为配置信息模板
-#### 4. **setup_server_env.sh**
-- ✅ PostgreSQL密码：交互式输入并采用二次验证
-- ✅ Airflow管理员密码：随机生成（16字符）
-- ✅ Fernet密钥：自动生成
-- ✅ 无硬编码敏感信息
----
-## 🔐 Security Precautions
-### 1. **Interactive Password Input**
+# 安全说明
+
+本页说明当前仓库在密钥、端口暴露、文件权限与部署操作上的安全边界。它不提供“已完全安全”的结论，而是列出当前控制、建议检查方式和剩余风险。
+
+相关文档：[`../README.md`](../README.md) · [`architecture_design.md`](architecture_design.md) · [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md)
+
+## 当前控制
+
+### 1. 密钥与凭据管理
+
+- `docker-compose.yaml` 通过环境变量读取 `POSTGRES_USER`、`POSTGRES_PASSWORD` 与 `AIRFLOW_FERNET_KEY`
+- 根目录 `.env` 已被 `.gitignore` 忽略，不应提交到版本控制
+- `.env.example` 只提供占位符值，可安全提交
+- `infra/setup_server_env.sh` 通过交互式输入获取数据库密码，并生成 Airflow 管理员密码与 Fernet key
+
+### 2. 文件与目录权限
+
+- 建议将 `.env` 权限设置为 `600`
+- SSH 私钥建议设置为 `600`，SSH 目录建议设置为 `700`
+- Postgres 持久化目录位于仓库下的 `data/postgres/`，便于配合主机层权限与备份策略统一管理
+
+### 3. 网络边界
+
+- `postgres:5432` 对 HK / JP worker 开放，用于远端回写数据
+- Airflow Web 默认映射到 `8080`，Dashboard 默认映射到 `8501`
+- 当前设计假设部署环境受控，主机层会使用防火墙、白名单或私网限制暴露面
+
+## 建议检查命令
+
+### 1. 检查 `.env` 是否被忽略
+
 ```bash
-# PostgreSQL密码现在需要用户输入
-echo "Enter PostgreSQL password for user 'airflow':"
-read -s POSTGRES_PASSWORD
+git check-ignore .env
 ```
-**优势：**
-- 脚本中无硬编码密码
-- 每次部署由用户自行输入密码
-- 密码永不存储在版本控制中
-### 2. **Password Strength Validation**
+
+### 2. 检查关键文件权限
+
 ```bash
-# 最少12个字符
-if [ ${#POSTGRES_PASSWORD} -lt 12 ]; then
-    echo "Error: Password must be at least 12 characters!"
-    exit 1
-fi
+ls -l .env
+ls -l ~/.ssh/id_rsa
+ls -ld ~/.ssh
 ```
-**优势：**
-- 强制使用强密码
-- 防止弱凭据
-### 3. **Random Admin Password Generation**
+
+### 3. 检查仓库中是否存在硬编码凭据
+
 ```bash
-# 生成16字符随机密码
-ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
+rg "POSTGRES_PASSWORD|AIRFLOW_FERNET_KEY|AIRFLOW_ADMIN_PASSWORD" docker-compose.yaml infra airflow dashboard exporter .env.example
 ```
-**优势：**
-- 不可预测的密码
-- 无默认凭据
-- 每次安装唯一
-### 4. **Secure File Permissions**
+
+### 4. 检查端口暴露与容器状态
+
 ```bash
-chmod 600 .env          # 仅所有者可读写
-chmod 600 ~/.ssh/id_rsa # SSH私钥
-chmod 700 ~/.ssh        # SSH目录
-chmod 644 ~/.ssh/known_hosts
+docker compose ps
+ss -lntp | rg ":5432|:8080|:8501"
 ```
----
-## 🔍 Security Verification Commands
-### 检查.env是否被忽略：
-```bash
-git status infrastructure/.env
-# 应显示："Untracked files" 或完全不出现
-```
-### 验证文件权限：
-```bash
-ls -la infrastructure/.env
-# 应显示：-rw------- (600)
-ls -la ~/.ssh/id_rsa
-# 应显示：-rw------- (600)
-```
-### 检查硬编码密码：
-```bash
-grep -r "password.*=" --include="*.yaml" --include="*.sh" .
-# 应仅显示环境变量引用
-```
----
-## 📋 Deployment Security Checklist
-生产环境部署前：
-- [ ] 验证 `.env` 在 `.gitignore` 中
-- [ ] 确认Git历史中无 `.env` 文件
-- [ ] 使用强PostgreSQL密码（12+字符）
-- [ ] 安全保存生成的管理员密码
-- [ ] 设置正确的文件权限（.env为600）
-- [ ] 配置UFW防火墙规则
-- [ ] 使用SSH密钥而非密码
----
-## ✅ Current Security Status: SECURE
-所有敏感信息已通过以下方式妥善保护：
-- 环境变量
-- 交互式输入
-- 随机生成
-- 安全文件权限
-- Git忽略规则
-**最后更新：** 2026-02-08
+
+## 当前假设
+
+- HK / JP 节点与 US 节点之间的网络处于受控环境
+- Airflow 与 Dashboard 不直接向公网开放，或已由额外代理层提供访问控制
+- 服务器操作者具备 Linux、Docker 与 SSH 基础，不以“默认全开放”模式长期运行该系统
+
+## 剩余风险
+
+- `airflow/dags/setup_airflow.sh` 当前为 SSH 连接启用了 `no_host_key_check`，在非受信环境中存在中间人风险
+- Postgres 对远端 worker 暴露 `5432`，如果主机层防火墙缺失，暴露面会明显扩大
+- Airflow Web 与 Streamlit Dashboard 默认没有额外鉴权层，直接对公网开放并不安全
+- Dashboard 若以 `root` 配置为 systemd 服务，仍需结合主机权限策略评估运行边界
+
+## 建议加固方向
+
+- 使用防火墙或私网，仅允许 HK / JP 的固定来源地址访问 `5432`
+- 为 Airflow 与 Dashboard 增加 TLS、反向代理与访问控制
+- 收紧 SSH 主机校验策略，避免长期依赖 `no_host_key_check`
+- 将 worker 的数据库权限收敛为更小的写入集合，减少误操作与被攻破后的影响面
